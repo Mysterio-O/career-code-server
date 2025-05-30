@@ -37,7 +37,7 @@ async function run() {
 
 
 
-
+        // jobs data management
 
         app.get('/jobs', async (req, res) => {
             console.log('getting started');
@@ -55,6 +55,12 @@ async function run() {
             res.send(result);
         })
 
+        app.post('/jobs', async(req,res)=> {
+            const job = req.body;
+            const result = await jobCollection.insertOne(job);
+            res.send(result);
+        })
+
 
         // application data management
 
@@ -64,20 +70,20 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/application', async(req, res)=> {
+        app.get('/application', async (req, res) => {
             const email = req.query.email;
             const query = {
-                userEmail : email
+                userEmail: email
             }
             const result = await applicationsCollection.find(query).toArray();
 
-            for(const application of result) {
+            for (const application of result) {
                 const jobId = application.jobId;
-                const jobQuery = {_id: new ObjectId(jobId)};
+                const jobQuery = { _id: new ObjectId(jobId) };
                 const job = await jobCollection.findOne(jobQuery);
                 application.company = job.company;
-                application.title=job.title;
-                application.company_logo= job.company_logo;
+                application.title = job.title;
+                application.company_logo = job.company_logo;
                 application.location = job.location;
                 application.salaryRange = job.salaryRange;
             }
@@ -86,9 +92,9 @@ async function run() {
             res.send(result);
         })
 
-        app.delete('/application/:id', async(req,res)=> {
+        app.delete('/application/:id', async (req, res) => {
             const id = req.params.id;
-            const query = {_id: new ObjectId(id)};
+            const query = { _id: new ObjectId(id) };
             const result = await applicationsCollection.deleteOne(query);
             res.send(result);
         })
