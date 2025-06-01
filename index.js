@@ -40,12 +40,32 @@ async function run() {
         // jobs data management
 
         app.get('/jobs', async (req, res) => {
-            console.log('getting started');
-            const cursor = jobCollection.find();
-            console.log('this is cursor', cursor)
+
+            const email = req.query.email;
+
+            let query = {};
+
+            if (email) {
+                query.hr_email = email;
+            }
+
+            const cursor = jobCollection.find(query);
             const result = await cursor.toArray();
-            console.log('this is result', result)
             res.send(result);
+        })
+
+        app.get('/job/applications', async(req,res)=> {
+            const email = req.query.email;
+            const query = {hr_email : email};
+            const jobs = await jobCollection.find(query).toArray();
+
+            for(const job of jobs) {
+                const applicationQuery = {jobId: job._id.toString()};
+                const applicationCount = await applicationsCollection.countDocuments(applicationQuery);
+                job.applicationCount = applicationCount;
+            }
+
+            res.send(jobs);
         })
 
         app.get('/job/:id', async (req, res) => {
@@ -55,7 +75,7 @@ async function run() {
             res.send(result);
         })
 
-        app.post('/jobs', async(req,res)=> {
+        app.post('/jobs', async (req, res) => {
             const job = req.body;
             const result = await jobCollection.insertOne(job);
             res.send(result);
@@ -89,6 +109,24 @@ async function run() {
             }
 
 
+            res.send(result);
+        });
+
+        app.get('/applications/job/:job_id', async (req, res) => {
+            const job_id = req.params.job_id;
+            const query = { jobId: job_id };
+            const result = await applicationsCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        app.patch('/applications/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: req.body
+            }
+            // const options = { upsert: true };
+            const result = await applicationsCollection.updateOne(filter, updatedDoc)
             res.send(result);
         })
 
