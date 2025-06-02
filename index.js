@@ -1,13 +1,74 @@
 require('dotenv').config()
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 const app = express();
 const port = process.env.PORT || 3000;
 app.use(express.json())
-app.use(cors())
+app.use(cors({
+    origin: ['http://localhost:5173'],
+    credentials: true
+}))
 
+app.use(cookieParser());
+
+const jwt = require('jsonwebtoken');
+
+
+//firebase admin
+var admin = require("firebase-admin");
+
+var serviceAccount = require("./firebase-admin-key.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
+
+
+const logger = (req, res, next) => {
+    // console.log('from logger');
+    next();
+}
+
+const verifyToken = (req, res, next) => {
+    const token = req.cookies.token;
+    // console.log('cookie from middleware', token);
+
+    //return unauthorized access request if the token is missing!
+
+    if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' });
+    }
+
+    //verify the token
+    jwt.verify(token, process.env.ACCESS_SECRET, (err, decoded) => {
+        if (err) {
+            res.status(401).send({ message: 'unauthorized access' })
+        }
+        req.decoded = decoded;
+        console.log(decoded.email);
+        next();
+    })
+}
+
+const verifyFirebaseToken = async (req, res, next) => {
+    // console.log(req?.headers?.authorization);
+
+    const firebaseToken = req?.headers?.authorization;
+    const token = firebaseToken.split(' ')[1];
+
+    if (!token) {
+        res.status(401).send({ message: 'unauthorized access' });
+    }
+
+    const userInfo = await admin.auth().verifyIdToken(token);
+    // console.log(userInfo);
+    req.tokenEmail = userInfo?.email;
+
+    next();
+}
 
 
 
@@ -54,13 +115,21 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/job/applications', async(req,res)=> {
+        app.get('/job/applications', verifyFirebaseToken, async (req, res) => {
             const email = req.query.email;
-            const query = {hr_email : email};
+
+            const cookieEmail = req?.tokenEmail;
+            // console.log(cookieEmail);
+
+            if (email !== cookieEmail) {
+                res.status(403).send('forbidden access');
+            }
+
+            const query = { hr_email: email };
             const jobs = await jobCollection.find(query).toArray();
 
-            for(const job of jobs) {
-                const applicationQuery = {jobId: job._id.toString()};
+            for (const job of jobs) {
+                const applicationQuery = { jobId: job._id.toString() };
                 const applicationCount = await applicationsCollection.countDocuments(applicationQuery);
                 job.applicationCount = applicationCount;
             }
@@ -82,6 +151,24 @@ async function run() {
         })
 
 
+        //jwt tokens
+
+        app.post('/jwt', async (req, res) => {
+            // const { email } = req.body;
+            // const user = { email };
+            const user = { email: req.body?.userData?.email };
+            // console.log('from jwt',user);
+            const token = jwt.sign(user, process.env.ACCESS_SECRET, { expiresIn: '1h' });
+
+            res.cookie('token', token, {
+                httpOnly: true,
+                secure: false
+            })
+
+            res.send({ success: true });
+        })
+
+
         // application data management
 
         app.post('/application', async (req, res) => {
@@ -90,12 +177,23 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/application', async (req, res) => {
+        app.get('/application', logger, verifyToken, async (req, res) => {
             const email = req.query.email;
+
+            // console.log('from get application', req?.decoded?.email);
+            const cookieOwnerEmail = req?.decoded?.email;
+
+            if (email !== cookieOwnerEmail) {
+                return res.status(403).send('forbidden access');
+            }
+
             const query = {
                 userEmail: email
             }
             const result = await applicationsCollection.find(query).toArray();
+
+            // console.log('from back', req.cookies)
+
 
             for (const application of result) {
                 const jobId = application.jobId;
