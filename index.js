@@ -8,9 +8,10 @@ const app = express();
 const port = process.env.PORT || 3000;
 app.use(express.json())
 app.use(cors({
-    origin: ['http://localhost:5173'],
+    origin: [ 'https://job-portal-3641b.firebaseapp.com'],
     credentials: true
 }))
+
 
 app.use(cookieParser());
 
@@ -18,9 +19,11 @@ const jwt = require('jsonwebtoken');
 
 
 //firebase admin
-var admin = require("firebase-admin");
+const admin = require("firebase-admin");
 
-var serviceAccount = require("./firebase-admin-key.json");
+const decoded= Buffer.from(process.env.FIREBASE_CONFIG_SECRET, 'base64').toString('utf8');
+
+const serviceAccount = JSON.parse(decoded);
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
@@ -81,6 +84,17 @@ const verifyFirebaseToken = async (req, res, next) => {
 
 }
 
+const verifyEmail = (req, res, next) => {
+    const userEmail = req?.query?.email;
+    const tokenEmail = req?.tokenEmail;
+    // console.log("userEmail :", userEmail)
+    // console.log("token email :", tokenEmail);
+    if (userEmail !== tokenEmail) {
+        return res.status(403).send({ message: 'forbidden access' });
+    }
+    next()
+}
+
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster-1.q9lo2nm.mongodb.net/?retryWrites=true&w=majority&appName=Cluster-1`;
@@ -98,7 +112,7 @@ const client = new MongoClient(uri, {
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
+        // await client.connect();
 
 
         const jobCollection = client.db('careerDB').collection('jobsCollection');
@@ -126,15 +140,8 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/job/applications', verifyFirebaseToken, async (req, res) => {
+        app.get('/job/applications', verifyFirebaseToken, verifyEmail, async (req, res) => {
             const email = req.query.email;
-
-            const cookieEmail = req?.tokenEmail;
-            // console.log(cookieEmail);
-
-            if (email !== cookieEmail) {
-                res.status(403).send('forbidden access');
-            }
 
             const query = { hr_email: email };
             const jobs = await jobCollection.find(query).toArray();
@@ -188,15 +195,8 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/application', logger, verifyFirebaseToken, async (req, res) => {
+        app.get('/application', logger, verifyFirebaseToken, verifyEmail, async (req, res) => {
             const email = req.query.email;
-
-            const cookieEmail = req?.tokenEmail;
-            // console.log(cookieEmail);
-
-            if (email !== cookieEmail) {
-                res.status(403).send('forbidden access');
-            }
 
             const query = {
                 userEmail: email
@@ -249,7 +249,7 @@ async function run() {
 
 
         // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
+        // await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
