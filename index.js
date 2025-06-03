@@ -48,7 +48,7 @@ const verifyToken = (req, res, next) => {
             res.status(401).send({ message: 'unauthorized access' })
         }
         req.decoded = decoded;
-        console.log(decoded.email);
+        // console.log(decoded.email);
         next();
     })
 }
@@ -57,17 +57,28 @@ const verifyFirebaseToken = async (req, res, next) => {
     // console.log(req?.headers?.authorization);
 
     const firebaseToken = req?.headers?.authorization;
+    // console.log('token of firebase', firebaseToken)
+
+    if (!firebaseToken || !firebaseToken.startsWith('Bearer')) {
+        return res.status(401).send({ message: 'unauthorized access' });
+    }
+
     const token = firebaseToken.split(' ')[1];
 
     if (!token) {
         res.status(401).send({ message: 'unauthorized access' });
     }
 
-    const userInfo = await admin.auth().verifyIdToken(token);
-    // console.log(userInfo);
-    req.tokenEmail = userInfo?.email;
+    try {
+        const userInfo = await admin.auth().verifyIdToken(token);
+        // console.log(userInfo);
+        req.tokenEmail = userInfo?.email;
+        next()
+    }
+    catch (err) {
+        res.status(401).send('unauthorized access');
+    }
 
-    next();
 }
 
 
@@ -177,14 +188,14 @@ async function run() {
             res.send(result);
         })
 
-        app.get('/application', logger, verifyToken, async (req, res) => {
+        app.get('/application', logger, verifyFirebaseToken, async (req, res) => {
             const email = req.query.email;
 
-            // console.log('from get application', req?.decoded?.email);
-            const cookieOwnerEmail = req?.decoded?.email;
+            const cookieEmail = req?.tokenEmail;
+            // console.log(cookieEmail);
 
-            if (email !== cookieOwnerEmail) {
-                return res.status(403).send('forbidden access');
+            if (email !== cookieEmail) {
+                res.status(403).send('forbidden access');
             }
 
             const query = {
